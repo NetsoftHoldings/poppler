@@ -55,6 +55,7 @@
 #include "CharTypes.h"
 #include "UnicodeMap.h"
 #include "PDFDocEncoding.h"
+#include "Link.h"
 #include "Error.h"
 #include <string>
 #include <sstream>
@@ -75,6 +76,7 @@ static int w = 0;
 static int h = 0;
 static GBool bbox = gFalse;
 static GBool bboxLayout = gFalse;
+static GBool bboxLayoutWithLinks = gFalse;
 static GBool physLayout = gFalse;
 static double fixedPitch = 0;
 static GBool rawOrder = gFalse;
@@ -124,6 +126,8 @@ static const ArgDesc argDesc[] = {
    "output bounding box for each word and page size to html.  Sets -htmlmeta"},
   {"-bbox-layout", argFlag,     &bboxLayout,  0,
    "like -bbox but with extra layout bounding box data.  Sets -htmlmeta"},
+  {"-bbox-layout-links", argFlag,     &bboxLayoutWithLinks,  0,
+   "like -bbox-layout but with action uri links data.  Sets -bbox-layout"},
   {"-opw",     argString,   ownerPassword,  sizeof(ownerPassword),
    "owner password (for encrypted files)"},
   {"-upw",     argString,   userPassword,   sizeof(userPassword),
@@ -184,6 +188,9 @@ int main(int argc, char *argv[]) {
 
   // parse args
   ok = parseArgs(argDesc, &argc, argv);
+  if (bboxLayoutWithLinks) {
+    bboxLayout = gTrue;
+  }
   if (bboxLayout) {
     bbox = gTrue;
   }
@@ -508,6 +515,38 @@ static void printLine(FILE *f, TextLine *line) {
   fputs("        </line>\n", f);
 }
 
+void printDocLinks(FILE *f, PDFDoc *doc, int page){
+  AnnotLink *link;
+  Page *docPage = doc->getPage(page);
+  Links *linksList = docPage->getLinks();
+
+  if (linksList->getNumLinks() > 0) {
+    fprintf(f, "    <links>\n");
+
+    double x1, y1, x2, y2;
+
+    for (int i = 0; i < linksList->getNumLinks(); ++i)
+    {
+
+      link = linksList->getLink(i);
+
+      // we only show the links that are actionURI type
+      if(link->getAction() && link->getAction()->getKind() == actionURI){
+        LinkURI *ha=(LinkURI *) link->getAction();
+        if (ha->isOk()) {
+            link->getRect(&x1, &y1, &x2, &y2);
+            const std::string uri = myXmlTokenReplace(ha->getURI()->getCString());
+            fprintf(f, "      <link kind=\"url\" xMin=\"%f\" yMin=\"%f\" xMax=\"%f\" yMax=\"%f\">%s</link>\n", x1,
+                    (doc->getPageMediaHeight(page) - y2), x2, (doc->getPageMediaHeight(page) - y1), uri.c_str());
+        }
+      }
+    }
+    delete linksList;
+
+    fprintf(f, "    </links>\n");
+  }
+}
+
 void printDocBBox(FILE *f, PDFDoc *doc, TextOutputDev *textOut, int first, int last) {
   double xMin, yMin, xMax, yMax;
   TextPage *textPage;
@@ -532,6 +571,11 @@ void printDocBBox(FILE *f, PDFDoc *doc, TextOutputDev *textOut, int first, int l
       }
       fprintf(f, "    </flow>\n");
     }
+
+    if (bboxLayoutWithLinks) {
+      printDocLinks(f, doc, page);
+    }
+
     fprintf(f, "  </page>\n");
     textPage->decRefCnt();
   }
