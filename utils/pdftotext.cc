@@ -537,7 +537,7 @@ void printDocLinks(FILE *f, PDFDoc *doc, int page){
       link = linksList->getLink(i);
 
       // we only show the links that are actionURI type
-      if(link->getAction()->getKind() == actionURI){
+      if(link->getAction() && link->getAction()->getKind() == actionURI){
         LinkURI *ha=(LinkURI *) link->getAction();
         if (ha->isOk()) {
             link->getRect(&x1, &y1, &x2, &y2);
